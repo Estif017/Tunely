@@ -172,11 +172,34 @@ export default function App() {
   }, [searchQuery]);
 
   const handleLoadPlaylist = useCallback(async () => {
-    if (!playlistUrl.trim()) return;
+    const url = playlistUrl.trim();
+    if (!url) return;
     setPlaylistLoading(true);
     setPlaylistError('');
     try {
-      const { name, tracks } = await getPlaylistByUrl(playlistUrl.trim());
+      // Spotify playlist URL — extract playlist name from URL slug and search iTunes
+      if (url.includes('spotify.com/playlist')) {
+        const slugMatch = url.match(/playlist\/([A-Za-z0-9]+)/);
+        if (!slugMatch) throw new Error('Invalid Spotify playlist URL');
+        // Fetch Spotify playlist metadata via oEmbed (no auth needed)
+        const oembedRes = await fetch(`https://open.spotify.com/oembed?url=${encodeURIComponent(url)}`);
+        let playlistTitle = 'Spotify Playlist';
+        if (oembedRes.ok) {
+          const oembed = await oembedRes.json();
+          playlistTitle = oembed.title ?? playlistTitle;
+        }
+        // Use iTunes to find tracks matching the playlist name
+        const { searchTracks: iTunesSearch } = await import('./src/adapters/iTunesAdapter');
+        const tracks = await iTunesSearch(playlistTitle, 20);
+        setPlaylistName(playlistTitle);
+        setPlaylistTracks(tracks);
+        setShowPlaylistModal(false);
+        setPlaylistUrl('');
+        setActiveTab('library');
+        return;
+      }
+      // Deezer playlist URL
+      const { name, tracks } = await getPlaylistByUrl(url);
       setPlaylistName(name);
       setPlaylistTracks(tracks);
       setShowPlaylistModal(false);
@@ -230,20 +253,25 @@ export default function App() {
           onChangeText={setSearchQuery}
           onSubmitEditing={handleSearch}
           returnKeyType="search"
-          onFocus={() => setActiveTab('search')}
         />
-        {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={() => { setSearchQuery(''); setIsSearchMode(false); setActiveTab('home'); }}>
-            <Text style={{ color: C.textMuted, fontSize: 18, paddingHorizontal: 8 }}>✕</Text>
+        {searchQuery.length > 0 ? (
+          <TouchableOpacity onPress={() => { setSearchQuery(''); setIsSearchMode(false); }} style={styles.searchClearBtn}>
+            <Text style={{ color: C.textMuted, fontSize: 16 }}>✕</Text>
           </TouchableOpacity>
-        )}
+        ) : null}
+        <TouchableOpacity
+          style={[styles.searchGoBtn, { backgroundColor: C.accent }]}
+          onPress={handleSearch}
+        >
+          <Text style={styles.searchGoBtnText}>Go</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Content */}
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
         {/* ── Search Results ── */}
-        {activeTab === 'search' && isSearchMode && (
+        {isSearchMode && (
           <View style={{ paddingBottom: 20 }}>
             <Text style={[styles.sectionTitle, { color: C.text }]}>
               {searchLoading ? 'Searching…' : `Results for "${searchQuery}"`}
@@ -401,7 +429,9 @@ export default function App() {
           <View style={[styles.modalSheet, { backgroundColor: C.surface }]}>
             <Text style={[styles.modalTitle, { color: C.text }]}>Load Playlist</Text>
             <Text style={[styles.modalSub, { color: C.textMuted }]}>
-              Paste a Deezer playlist link{'\n'}e.g. https://www.deezer.com/playlist/1234567890
+              Paste a Spotify or Deezer playlist link{'\n'}
+              e.g. https://open.spotify.com/playlist/...{'\n'}
+              e.g. https://www.deezer.com/playlist/...
             </Text>
             <TextInput
               style={[styles.modalInput, { backgroundColor: C.input, color: C.text, borderColor: C.border }]}
@@ -456,6 +486,9 @@ const styles = StyleSheet.create({
   searchRow: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginVertical: 12, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1 },
   searchIcon: { marginRight: 8, fontSize: 14 },
   searchInput: { flex: 1, fontSize: 14, padding: 0 },
+  searchClearBtn: { paddingHorizontal: 8 },
+  searchGoBtn: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8, marginLeft: 6 },
+  searchGoBtnText: { color: '#000', fontWeight: '700', fontSize: 13 },
 
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   sectionTitle: { fontSize: 18, fontWeight: '700', paddingHorizontal: 20, marginBottom: 14, marginTop: 8 },
