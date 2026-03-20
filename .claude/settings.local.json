@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(gh repo:*)",
+      "Bash(npx create-expo-app:*)",
+      "Bash(cp -r tunely/. .)",
+      "Bash(rm -rf tunely)",
+      "Bash(cp tunely/App.tsx .)",
+      "Bash(cp tunely/app.json .)",
+      "Bash(cp tunely/index.ts .)",
+      "Bash(cp tunely/package.json .)",
+      "Bash(cp tunely/package-lock.json .)",
+      "Bash(cp tunely/tsconfig.json .)",
+      "Bash(cp -r tunely/assets .)",
+      "Bash(npm install:*)",
+      "Bash(mkdir -p src/models src/adapters src/screens src/components src/cache src/state)",
+      "Bash(touch src/models/.gitkeep src/adapters/.gitkeep src/screens/.gitkeep src/components/.gitkeep src/cache/.gitkeep src/state/.gitkeep)"
+    ]
+  }
+}
