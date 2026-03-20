@@ -20,7 +20,10 @@
       "mcp__Claude_Preview__preview_start",
       "Bash(cmd //c \"where npm\")",
       "Bash(npx expo:*)",
-      "Bash(gh pr:*)"
+      "Bash(gh pr:*)",
+      "Bash(./node_modules/.bin/tsc --noEmit)",
+      "Bash(node -e \"require\\(''''typescript''''\\)\")",
+      "Bash(node node_modules/typescript/lib/tsc.js --noEmit)"
     ]
   }
 }
