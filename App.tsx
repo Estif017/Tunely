@@ -1,5 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -7,7 +7,11 @@ import {
   View,
   TouchableOpacity,
   Dimensions,
+  ActivityIndicator,
+  Image,
 } from 'react-native';
+import { Track } from './src/models';
+import { getFeaturedTracks, getNewReleases } from './src/adapters/SpotifyAdapter';
 
 const { width } = Dimensions.get('window');
 
@@ -33,20 +37,7 @@ const LIGHT = {
   statusBar: 'dark' as const,
 };
 
-const featuredTracks = [
-  { id: '1', title: 'Blinding Lights', artist: 'The Weeknd', duration: '3:22', color: '#FF4D6D' },
-  { id: '2', title: 'As It Was', artist: 'Harry Styles', duration: '2:37', color: '#4D9FFF' },
-  { id: '3', title: 'Flowers', artist: 'Miley Cyrus', duration: '3:20', color: '#FFB74D' },
-  { id: '4', title: 'Unholy', artist: 'Sam Smith', duration: '2:56', color: '#B44DFF' },
-];
-
-const recentTracks = [
-  { id: '5', title: 'Anti-Hero', artist: 'Taylor Swift', duration: '3:21', color: '#FF6B9D' },
-  { id: '6', title: 'Calm Down', artist: 'Rema', duration: '3:35', color: '#4DFFB4' },
-  { id: '7', title: 'Escapism', artist: 'RAYE', duration: '3:17', color: '#FFD54D' },
-  { id: '8', title: 'Snooze', artist: 'SZA', duration: '3:22', color: '#4DB8FF' },
-  { id: '9', title: 'Die For You', artist: 'The Weeknd', duration: '4:20', color: '#FF7043' },
-];
+const CARD_COLORS = ['#FF4D6D', '#4D9FFF', '#FFB74D', '#B44DFF', '#FF6B9D', '#4DFFB4', '#FFD54D', '#4DB8FF', '#FF7043', '#1DB954'];
 
 const playlists = [
   { id: 'p1', name: 'Chill Vibes', count: 24, color: '#1DB954' },
@@ -54,9 +45,34 @@ const playlists = [
   { id: 'p3', name: 'Late Night', count: 31, color: '#4D9FFF' },
 ];
 
+function formatDuration(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
 export default function App() {
   const [isDark, setIsDark] = useState(true);
   const C = isDark ? DARK : LIGHT;
+
+  const [featured, setFeatured] = useState<Track[]>([]);
+  const [newReleases, setNewReleases] = useState<Track[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [f, n] = await Promise.all([getFeaturedTracks(8), getNewReleases(8)]);
+        setFeatured(f);
+        setNewReleases(n);
+      } catch (e: any) {
+        setError(e.message ?? 'Failed to load tracks');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
 
   return (
     <View style={[styles.root, { backgroundColor: C.bg }]}>
@@ -89,25 +105,38 @@ export default function App() {
           <Text style={[styles.searchPlaceholder, { color: C.textMuted }]}>Search songs, artists, albums…</Text>
         </TouchableOpacity>
 
-        {/* Featured */}
+        {/* Featured / Trending */}
         <Text style={[styles.sectionTitle, { color: C.text }]}>Trending Now</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-          {featuredTracks.map(t => (
-            <TouchableOpacity key={t.id} style={[styles.featuredCard, { backgroundColor: t.color + '22', borderColor: t.color + '44' }]}>
-              <View style={[styles.featuredArt, { backgroundColor: t.color + '55' }]}>
-                <Text style={styles.featuredArtIcon}>♫</Text>
-              </View>
-              <Text style={[styles.featuredTitle, { color: C.text }]} numberOfLines={1}>{t.title}</Text>
-              <Text style={[styles.featuredArtist, { color: C.textMuted }]} numberOfLines={1}>{t.artist}</Text>
-              <View style={styles.featuredFooter}>
-                <Text style={[styles.featuredDuration, { color: C.textMuted }]}>{t.duration}</Text>
-                <TouchableOpacity style={[styles.playBtn, { backgroundColor: t.color }]}>
-                  <Text style={styles.playBtnText}>▶</Text>
+        {loading ? (
+          <ActivityIndicator color={C.accent} style={{ marginBottom: 28 }} />
+        ) : error ? (
+          <Text style={[styles.errorText, { color: '#FF4D6D' }]}>{error}</Text>
+        ) : (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+            {featured.map((t, i) => {
+              const color = CARD_COLORS[i % CARD_COLORS.length];
+              return (
+                <TouchableOpacity key={t.id} style={[styles.featuredCard, { backgroundColor: color + '22', borderColor: color + '44' }]}>
+                  {t.thumbnailUrl ? (
+                    <Image source={{ uri: t.thumbnailUrl }} style={styles.featuredArt} />
+                  ) : (
+                    <View style={[styles.featuredArt, { backgroundColor: color + '55' }]}>
+                      <Text style={styles.featuredArtIcon}>♫</Text>
+                    </View>
+                  )}
+                  <Text style={[styles.featuredTitle, { color: C.text }]} numberOfLines={1}>{t.title}</Text>
+                  <Text style={[styles.featuredArtist, { color: C.textMuted }]} numberOfLines={1}>{t.artist}</Text>
+                  <View style={styles.featuredFooter}>
+                    <Text style={[styles.featuredDuration, { color: C.textMuted }]}>{formatDuration(t.duration)}</Text>
+                    <TouchableOpacity style={[styles.playBtn, { backgroundColor: color }]}>
+                      <Text style={styles.playBtnText}>▶</Text>
+                    </TouchableOpacity>
+                  </View>
                 </TouchableOpacity>
-              </View>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+              );
+            })}
+          </ScrollView>
+        )}
 
         {/* Playlists */}
         <Text style={[styles.sectionTitle, { color: C.text }]}>Your Playlists</Text>
@@ -123,37 +152,45 @@ export default function App() {
           ))}
         </ScrollView>
 
-        {/* Recent Tracks */}
+        {/* New Releases */}
         <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: C.text }]}>Recently Played</Text>
+          <Text style={[styles.sectionTitle, { color: C.text }]}>New Releases</Text>
           <TouchableOpacity style={{ paddingRight: 20, marginBottom: 14 }}>
             <Text style={[styles.seeAll, { color: C.accent }]}>See all</Text>
           </TouchableOpacity>
         </View>
-        <View style={[styles.trackList, { backgroundColor: C.surface, borderColor: C.border }]}>
-          {recentTracks.map((t, i) => (
-            <TouchableOpacity
-              key={t.id}
-              style={[
-                styles.trackRow,
-                { borderBottomColor: C.border },
-                i === recentTracks.length - 1 && { borderBottomWidth: 0 },
-              ]}
-            >
-              <View style={[styles.trackThumb, { backgroundColor: t.color + '44' }]}>
-                <Text style={styles.trackThumbIcon}>♪</Text>
-              </View>
-              <View style={styles.trackInfo}>
-                <Text style={[styles.trackTitle, { color: C.text }]} numberOfLines={1}>{t.title}</Text>
-                <Text style={[styles.trackArtist, { color: C.textMuted }]} numberOfLines={1}>{t.artist}</Text>
-              </View>
-              <Text style={[styles.trackDuration, { color: C.textMuted }]}>{t.duration}</Text>
-              <TouchableOpacity style={styles.trackMore}>
-                <Text style={[styles.trackMoreText, { color: C.textMuted }]}>⋯</Text>
+        {loading ? (
+          <ActivityIndicator color={C.accent} style={{ marginBottom: 28 }} />
+        ) : (
+          <View style={[styles.trackList, { backgroundColor: C.surface, borderColor: C.border }]}>
+            {newReleases.map((t, i) => (
+              <TouchableOpacity
+                key={t.id}
+                style={[
+                  styles.trackRow,
+                  { borderBottomColor: C.border },
+                  i === newReleases.length - 1 && { borderBottomWidth: 0 },
+                ]}
+              >
+                {t.thumbnailUrl ? (
+                  <Image source={{ uri: t.thumbnailUrl }} style={styles.trackThumb} />
+                ) : (
+                  <View style={[styles.trackThumb, { backgroundColor: CARD_COLORS[i % CARD_COLORS.length] + '44' }]}>
+                    <Text style={styles.trackThumbIcon}>♪</Text>
+                  </View>
+                )}
+                <View style={styles.trackInfo}>
+                  <Text style={[styles.trackTitle, { color: C.text }]} numberOfLines={1}>{t.title}</Text>
+                  <Text style={[styles.trackArtist, { color: C.textMuted }]} numberOfLines={1}>{t.artist}</Text>
+                </View>
+                <Text style={[styles.trackDuration, { color: C.textMuted }]}>{formatDuration(t.duration)}</Text>
+                <TouchableOpacity style={styles.trackMore}>
+                  <Text style={[styles.trackMoreText, { color: C.textMuted }]}>⋯</Text>
+                </TouchableOpacity>
               </TouchableOpacity>
-            </TouchableOpacity>
-          ))}
-        </View>
+            ))}
+          </View>
+        )}
 
         <View style={{ height: 130 }} />
       </ScrollView>
@@ -229,6 +266,7 @@ const styles = StyleSheet.create({
   playlistName: { fontSize: 13, fontWeight: '600' },
   playlistCount: { fontSize: 11, marginTop: 2 },
 
+  errorText: { marginHorizontal: 20, marginBottom: 20, fontSize: 13 },
   trackList: { marginHorizontal: 20, borderRadius: 14, borderWidth: 1, overflow: 'hidden' },
   trackRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 14, borderBottomWidth: 1 },
   trackThumb: { width: 44, height: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
