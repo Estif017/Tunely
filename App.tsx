@@ -118,8 +118,7 @@ export default function App() {
   // Player
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [activeTab, setActiveTab] = useState<'home' | 'search' | 'library' | 'downloads'>('home');
-  const [audioSource, setAudioSource] = useState<{ uri: string } | null>(null);
-  const player = useAudioPlayer(audioSource ?? { uri: '' });
+  const player = useAudioPlayer({ uri: '' });
   const isPlaying = player.playing;
 
   // Load home data
@@ -143,9 +142,7 @@ export default function App() {
   const playTrack = useCallback((track: Track) => {
     if (!track.streamUrl) return;
     setCurrentTrack(track);
-    setAudioSource({ uri: track.streamUrl });
-    // Give the player a tick to load the new source, then play
-    setTimeout(() => { try { player.play(); } catch {} }, 100);
+    player.replace({ uri: track.streamUrl }); // loads + auto-plays atomically
   }, [player]);
 
   const togglePlay = useCallback(() => {
