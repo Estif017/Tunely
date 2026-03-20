@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "Expo Dev Server",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "start"],
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["node_modules/expo/bin/cli", "start", "--web"],
       "port": 8081
     },
     {
