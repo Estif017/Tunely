@@ -40,8 +40,8 @@ function TrackRow({
       style={[styles.trackRow, { borderBottomColor: C.border }]}
       onPress={() => onPlay(track)}
     >
-      {track.thumbnailUrl ? (
-        <Image source={{ uri: track.thumbnailUrl }} style={styles.trackThumb} />
+      {track.albumArt ? (
+        <Image source={{ uri: track.albumArt }} style={styles.trackThumb} />
       ) : (
         <View style={[styles.trackThumb, { backgroundColor: color + '44' }]}>
           <Text style={styles.trackThumbIcon}>♪</Text>
@@ -53,7 +53,7 @@ function TrackRow({
         </Text>
         <Text style={[styles.trackArtist, { color: C.textMuted }]} numberOfLines={1}>{track.artist}</Text>
       </View>
-      <Text style={[styles.trackDuration, { color: C.textMuted }]}>{fmt(track.duration)}</Text>
+      <Text style={[styles.trackDuration, { color: C.textMuted }]}>{fmt(Math.round(track.durationMs/1000))}</Text>
     </TouchableOpacity>
   );
 }
@@ -70,8 +70,8 @@ function FeaturedCard({
       style={[styles.featuredCard, { backgroundColor: color + '22', borderColor: isActive ? color : color + '44' }]}
       onPress={() => onPlay(track)}
     >
-      {track.thumbnailUrl ? (
-        <Image source={{ uri: track.thumbnailUrl }} style={styles.featuredArt} />
+      {track.albumArt ? (
+        <Image source={{ uri: track.albumArt }} style={styles.featuredArt} />
       ) : (
         <View style={[styles.featuredArt, { backgroundColor: color + '55', alignItems: 'center', justifyContent: 'center' }]}>
           <Text style={{ fontSize: 32 }}>♫</Text>
@@ -82,7 +82,7 @@ function FeaturedCard({
       </Text>
       <Text style={[styles.featuredArtist, { color: C.textMuted }]} numberOfLines={1}>{track.artist}</Text>
       <View style={styles.featuredFooter}>
-        <Text style={[styles.featuredDuration, { color: C.textMuted }]}>{fmt(track.duration)}</Text>
+        <Text style={[styles.featuredDuration, { color: C.textMuted }]}>{fmt(Math.round(track.durationMs/1000))}</Text>
         <View style={[styles.playBtn, { backgroundColor: color }]}>
           <Text style={styles.playBtnText}>▶</Text>
         </View>
@@ -136,7 +136,7 @@ export default function App() {
 
   // Audio setup
   useEffect(() => {
-    setAudioModeAsync({ playsInSilentModeIOS: true, shouldPlayInBackground: true });
+    setAudioModeAsync({ playsInSilentMode: true, shouldPlayInBackground: true });
   }, []);
 
   const playTrack = useCallback((track: Track) => {
@@ -385,8 +385,8 @@ export default function App() {
       {/* Now Playing Bar */}
       {currentTrack && (
         <View style={[styles.nowPlaying, { backgroundColor: C.surface, borderColor: C.accent + '88' }]}>
-          {currentTrack.thumbnailUrl ? (
-            <Image source={{ uri: currentTrack.thumbnailUrl }} style={styles.nowPlayingThumb} />
+          {currentTrack.albumArt ? (
+            <Image source={{ uri: currentTrack.albumArt }} style={styles.nowPlayingThumb} />
           ) : (
             <View style={[styles.nowPlayingThumb, { backgroundColor: C.accent + '33', alignItems: 'center', justifyContent: 'center' }]}>
               <Text style={{ color: C.accent }}>♫</Text>

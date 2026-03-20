@@ -34,14 +34,14 @@ async function getAccessToken(): Promise<string> {
 
 function mapToTrack(item: any): Track {
   return {
-    id: `spotify:${item.id}`,
+    id: item.id,
+    spotifyId: item.id,
     title: item.name,
     artist: item.artists.map((a: any) => a.name).join(', '),
-    album: item.album?.name,
-    duration: Math.round(item.duration_ms / 1000),
-    thumbnailUrl: item.album?.images?.[0]?.url ?? '',
+    album: item.album?.name ?? '',
+    albumArt: item.album?.images?.[0]?.url ?? '',
+    durationMs: item.duration_ms,
     source: 'spotify',
-    iscached: false,
   };
 }
 

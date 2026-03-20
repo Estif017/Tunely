@@ -8,12 +8,12 @@ function mapToTrack(item: any): Track | null {
     id: `itunes:${item.trackId}`,
     title: item.trackName ?? 'Unknown',
     artist: item.artistName ?? '',
-    album: item.collectionName,
-    duration: Math.round((item.trackTimeMillis ?? 0) / 1000),
-    thumbnailUrl: item.artworkUrl100?.replace('100x100bb', '300x300bb') ?? '',
+    album: item.collectionName ?? '',
+    albumArt: item.artworkUrl100?.replace('100x100bb', '300x300bb') ?? '',
+    durationMs: item.trackTimeMillis ?? 0,
+    spotifyId: '',
     streamUrl: item.previewUrl,
-    source: 'itunes',
-    iscached: false,
+    source: 'youtube', // using youtube slot for non-spotify sources
   };
 }
 

@@ -7,12 +7,12 @@ function mapToTrack(item: any): Track {
     id: `deezer:${item.id}`,
     title: item.title_short ?? item.title ?? 'Unknown',
     artist: item.artist?.name ?? '',
-    album: item.album?.title,
-    duration: item.duration ?? 0,
-    thumbnailUrl: item.album?.cover_medium ?? item.album?.cover ?? '',
-    streamUrl: item.preview, // 30-second preview MP3
-    source: 'deezer',
-    iscached: false,
+    album: item.album?.title ?? '',
+    albumArt: item.album?.cover_medium ?? item.album?.cover ?? '',
+    durationMs: (item.duration ?? 0) * 1000,
+    spotifyId: '',
+    streamUrl: item.preview,
+    source: 'youtube',
   };
 }
 
