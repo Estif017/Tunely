@@ -19,7 +19,8 @@
       "Bash(touch src/models/.gitkeep src/adapters/.gitkeep src/screens/.gitkeep src/components/.gitkeep src/cache/.gitkeep src/state/.gitkeep)",
       "mcp__Claude_Preview__preview_start",
       "Bash(cmd //c \"where npm\")",
-      "Bash(npx expo:*)"
+      "Bash(npx expo:*)",
+      "Bash(gh pr:*)"
     ]
   }
 }
