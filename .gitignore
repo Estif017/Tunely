@@ -19,6 +19,9 @@ ios/
 .env.local
 .env.*.local
 
+# Local config with secrets
+src/config.ts
+
 # Build outputs
 *.jks
 *.p8
