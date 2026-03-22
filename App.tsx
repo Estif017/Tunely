@@ -1,5 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   ScrollView, StyleSheet, Text, View, TouchableOpacity,
   TextInput, Image, ActivityIndicator, Modal, KeyboardAvoidingView, Platform,
@@ -8,6 +8,7 @@ import { useAudioPlayer, setAudioModeAsync } from 'expo-audio';
 import { Track } from './src/models';
 import { getTrending, getNewReleases, searchTracks } from './src/adapters/iTunesAdapter';
 import { getPlaylistByUrl } from './src/adapters/DeezerAdapter';
+import { resolveTrackStream } from './src/adapters/invidiousAdapter';
 
 // ─── Themes ──────────────────────────────────────────────────────────────────
 const DARK = {
@@ -134,6 +135,7 @@ export default function App() {
 
   // Player
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
+  const [isLoadingTrack, setIsLoadingTrack] = useState(false);
   const [activeTab, setActiveTab] = useState<'home' | 'search' | 'library' | 'downloads'>('home');
   const player = useAudioPlayer(null);
   const isPlaying = player.playing;
@@ -156,10 +158,23 @@ export default function App() {
     setAudioModeAsync({ playsInSilentMode: true, shouldPlayInBackground: true });
   }, []);
 
-  const playTrack = useCallback((track: Track) => {
-    if (!track.streamUrl) return;
+  // Play a track — resolves full audio via Invidious, falls back to iTunes preview
+  const playTrack = useCallback(async (track: Track) => {
     setCurrentTrack(track);
-    player.replace({ uri: track.streamUrl }); // loads + auto-plays atomically
+    setIsLoadingTrack(true);
+    try {
+      const streamUrl = await resolveTrackStream(track.artist, track.title);
+      if (streamUrl) {
+        player.replace({ uri: streamUrl });
+        return;
+      }
+      // Fallback: iTunes 30-second preview
+      if (track.streamUrl) player.replace({ uri: track.streamUrl });
+    } catch {
+      if (track.streamUrl) player.replace({ uri: track.streamUrl });
+    } finally {
+      setIsLoadingTrack(false);
+    }
   }, [player]);
 
   const togglePlay = useCallback(() => {
@@ -170,13 +185,14 @@ export default function App() {
     }
   }, [player]);
 
-  const handleSearch = useCallback(async () => {
-    if (!searchQuery.trim()) return;
+  // Core search function — used by debounce effect and Go button
+  const doSearch = useCallback(async (query: string) => {
+    if (!query.trim()) return;
     setSearchLoading(true);
     setIsSearchMode(true);
     setSearchError(null);
     try {
-      const results = await searchTracks(searchQuery.trim(), 20);
+      const results = await searchTracks(query.trim(), 20);
       setSearchResults(results);
     } catch (e: any) {
       setSearchResults([]);
@@ -184,7 +200,21 @@ export default function App() {
     } finally {
       setSearchLoading(false);
     }
-  }, [searchQuery]);
+  }, []);
+
+  // Debounced live search — fires 400ms after the user stops typing
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setIsSearchMode(false);
+      setSearchResults([]);
+      setSearchError(null);
+      return;
+    }
+    const timer = setTimeout(() => doSearch(searchQuery), 400);
+    return () => clearTimeout(timer);
+  }, [searchQuery, doSearch]);
+
+  const handleSearch = useCallback(() => doSearch(searchQuery), [searchQuery, doSearch]);
 
   const handleLoadPlaylist = useCallback(async () => {
     const url = playlistUrl.trim();
@@ -408,8 +438,11 @@ export default function App() {
             <Text style={[styles.nowPlayingTitle, { color: C.text }]} numberOfLines={1}>{currentTrack.title}</Text>
             <Text style={[styles.nowPlayingArtist, { color: C.textMuted }]} numberOfLines={1}>{currentTrack.artist}</Text>
           </View>
-          <TouchableOpacity style={[styles.nowPlayingPlay, { backgroundColor: C.accent }]} onPress={togglePlay}>
-            <Text style={{ color: '#000', fontSize: 14, fontWeight: '700' }}>{isPlaying ? '⏸' : '▶'}</Text>
+          <TouchableOpacity style={[styles.nowPlayingPlay, { backgroundColor: C.accent }]} onPress={togglePlay} disabled={isLoadingTrack}>
+            {isLoadingTrack
+              ? <ActivityIndicator color="#000" size="small" />
+              : <Text style={{ color: '#000', fontSize: 14, fontWeight: '700' }}>{isPlaying ? '⏸' : '▶'}</Text>
+            }
           </TouchableOpacity>
         </View>
       )}
