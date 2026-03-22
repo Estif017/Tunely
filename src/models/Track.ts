@@ -9,7 +9,7 @@ export interface Track {
   youtubeVideoId?: string; // resolved after YouTube matching
   streamUrl?: string;      // resolved after stream extraction
   cachedAt?: number;       // timestamp when stream URL was cached
-  source: 'spotify' | 'youtube';
+  source: 'spotify' | 'youtube' | 'itunes' | 'deezer';
 }
 
 export default Track;

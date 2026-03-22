@@ -21,6 +21,20 @@ const LIGHT = {
   border: '#D1D1D6', input: '#E5E5EA', statusBar: 'dark' as const,
 };
 const CARD_COLORS = ['#FF4D6D','#4D9FFF','#FFB74D','#B44DFF','#FF6B9D','#4DFFB4','#FFD54D','#4DB8FF','#FF7043','#1DB954'];
+type Theme = typeof DARK | typeof LIGHT;
+
+const PLAYLISTS = [
+  { id: 'p1', name: 'Chill Vibes', count: 24, color: '#1DB954' },
+  { id: 'p2', name: 'Workout Mix', count: 18, color: '#FF4D6D' },
+  { id: 'p3', name: 'Late Night', count: 31, color: '#4D9FFF' },
+];
+
+function getGreeting() {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning 👋';
+  if (h < 17) return 'Good afternoon 👋';
+  return 'Good evening 👋';
+}
 
 function fmt(sec: number) {
   const m = Math.floor(sec / 60), s = sec % 60;
@@ -31,7 +45,7 @@ function fmt(sec: number) {
 function TrackRow({
   track, index, C, onPlay, isActive,
 }: {
-  track: Track; index: number; C: typeof DARK;
+  track: Track; index: number; C: Theme;
   onPlay: (t: Track) => void; isActive: boolean;
 }) {
   const color = CARD_COLORS[index % CARD_COLORS.length];
@@ -61,7 +75,7 @@ function TrackRow({
 function FeaturedCard({
   track, index, C, onPlay, isActive,
 }: {
-  track: Track; index: number; C: typeof DARK;
+  track: Track; index: number; C: Theme;
   onPlay: (t: Track) => void; isActive: boolean;
 }) {
   const color = CARD_COLORS[index % CARD_COLORS.length];
@@ -115,10 +129,13 @@ export default function App() {
   const [playlistLoading, setPlaylistLoading] = useState(false);
   const [playlistError, setPlaylistError] = useState('');
 
+  // Search error
+  const [searchError, setSearchError] = useState<string | null>(null);
+
   // Player
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [activeTab, setActiveTab] = useState<'home' | 'search' | 'library' | 'downloads'>('home');
-  const player = useAudioPlayer({ uri: '' });
+  const player = useAudioPlayer(null);
   const isPlaying = player.playing;
 
   // Load home data
@@ -146,23 +163,24 @@ export default function App() {
   }, [player]);
 
   const togglePlay = useCallback(() => {
-    if (!currentTrack) return;
     if (player.playing) {
       player.pause();
     } else {
       player.play();
     }
-  }, [player, currentTrack]);
+  }, [player]);
 
   const handleSearch = useCallback(async () => {
     if (!searchQuery.trim()) return;
     setSearchLoading(true);
     setIsSearchMode(true);
+    setSearchError(null);
     try {
       const results = await searchTracks(searchQuery.trim(), 20);
       setSearchResults(results);
-    } catch (e) {
+    } catch (e: any) {
       setSearchResults([]);
+      setSearchError(e.message ?? 'Search failed. Check your connection.');
     } finally {
       setSearchLoading(false);
     }
@@ -185,9 +203,7 @@ export default function App() {
           const oembed = await oembedRes.json();
           playlistTitle = oembed.title ?? playlistTitle;
         }
-        // Use iTunes to find tracks matching the playlist name
-        const { searchTracks: iTunesSearch } = await import('./src/adapters/iTunesAdapter');
-        const tracks = await iTunesSearch(playlistTitle, 20);
+        const tracks = await searchTracks(playlistTitle, 20);
         setPlaylistName(playlistTitle);
         setPlaylistTracks(tracks);
         setShowPlaylistModal(false);
@@ -209,12 +225,6 @@ export default function App() {
     }
   }, [playlistUrl]);
 
-  const playlists = [
-    { id: 'p1', name: 'Chill Vibes', count: 24, color: '#1DB954' },
-    { id: 'p2', name: 'Workout Mix', count: 18, color: '#FF4D6D' },
-    { id: 'p3', name: 'Late Night', count: 31, color: '#4D9FFF' },
-  ];
-
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
     <View style={[styles.root, { backgroundColor: C.bg }]}>
@@ -223,7 +233,7 @@ export default function App() {
       {/* Header */}
       <View style={[styles.header, { borderBottomColor: C.border }]}>
         <View>
-          <Text style={[styles.greeting, { color: C.textMuted }]}>Good evening 👋</Text>
+          <Text style={[styles.greeting, { color: C.textMuted }]}>{getGreeting()}</Text>
           <Text style={[styles.appName, { color: C.text }]}>Tunely</Text>
         </View>
         <View style={styles.headerRight}>
@@ -277,7 +287,9 @@ export default function App() {
               <ActivityIndicator color={C.accent} style={{ marginTop: 20 }} />
             ) : (
               <View style={[styles.trackList, { backgroundColor: C.surface, borderColor: C.border }]}>
-                {searchResults.length === 0 ? (
+                {searchError ? (
+                  <Text style={[styles.emptyText, { color: '#FF4D6D', padding: 16 }]}>{searchError}</Text>
+                ) : searchResults.length === 0 ? (
                   <Text style={[styles.emptyText, { color: C.textMuted }]}>No results found</Text>
                 ) : searchResults.map((t, i) => (
                   <TrackRow key={t.id} track={t} index={i} C={C}
@@ -345,7 +357,7 @@ export default function App() {
             {/* Playlists */}
             <Text style={[styles.sectionTitle, { color: C.text }]}>Your Playlists</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-              {playlists.map(p => (
+              {PLAYLISTS.map(p => (
                 <TouchableOpacity key={p.id} style={styles.playlistCard}
                   onPress={() => { setActiveTab('library'); setShowPlaylistModal(true); }}>
                   <View style={[styles.playlistCover, { backgroundColor: p.color + '33' }]}>

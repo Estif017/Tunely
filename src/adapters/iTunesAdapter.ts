@@ -13,7 +13,7 @@ function mapToTrack(item: any): Track | null {
     durationMs: item.trackTimeMillis ?? 0,
     spotifyId: '',
     streamUrl: item.previewUrl,
-    source: 'youtube', // using youtube slot for non-spotify sources
+    source: 'itunes',
   };
 }
 

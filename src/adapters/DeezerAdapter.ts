@@ -12,7 +12,7 @@ function mapToTrack(item: any): Track {
     durationMs: (item.duration ?? 0) * 1000,
     spotifyId: '',
     streamUrl: item.preview,
-    source: 'youtube',
+    source: 'deezer',
   };
 }
 
@@ -30,24 +30,12 @@ export async function getTrending(limit = 10): Promise<Track[]> {
   return (data.data ?? []).map(mapToTrack);
 }
 
-export async function getNewReleaseTracks(limit = 8): Promise<Track[]> {
-  const res = await fetch(`${API}/chart/0/albums?limit=${limit}`);
-  if (!res.ok) throw new Error(`Albums failed: ${res.status}`);
-  const albums: any[] = (await res.json()).data ?? [];
-  const results = await Promise.all(
-    albums.slice(0, limit).map(async (album) => {
-      try {
-        const r = await fetch(`${API}/album/${album.id}/tracks?limit=1`);
-        const d = await r.json();
-        const t = d.data?.[0];
-        if (!t) return null;
-        return mapToTrack({ ...t, album: { title: album.title, cover_medium: album.cover_medium } });
-      } catch {
-        return null;
-      }
-    })
-  );
-  return results.filter(Boolean) as Track[];
+// Deezer free API has no true new-releases endpoint; chart/0/tracks is the best proxy.
+export async function getNewReleases(limit = 8): Promise<Track[]> {
+  const res = await fetch(`${API}/chart/0/tracks?limit=${limit}`);
+  if (!res.ok) throw new Error(`New releases failed: ${res.status}`);
+  const data = await res.json();
+  return (data.data ?? []).map(mapToTrack);
 }
 
 export async function getPlaylistByUrl(url: string): Promise<{ name: string; tracks: Track[] }> {

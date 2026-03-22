@@ -62,36 +62,30 @@ export async function searchTracks(query: string, limit = 20): Promise<Track[]> 
 
 export async function getNewReleases(limit = 20): Promise<Track[]> {
   const token = await getAccessToken();
-  const params = new URLSearchParams({ limit: String(limit) });
-  const res = await fetch(`${API_BASE}/browse/new-releases?${params}`, {
+  // Step 1: get album IDs from new-releases
+  const listRes = await fetch(`${API_BASE}/browse/new-releases?limit=${limit}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
+  if (!listRes.ok) throw new Error(`Spotify new releases failed: ${listRes.status}`);
+  const listData = await listRes.json();
+  const ids = listData.albums.items.map((a: any) => a.id).join(',');
 
-  if (!res.ok) {
-    throw new Error(`Spotify new releases failed: ${res.status}`);
-  }
-
-  const data = await res.json();
-
-  // New releases returns albums — fetch the first track from each
-  const trackPromises = data.albums.items.map(async (album: any) => {
-    const tracksRes = await fetch(`${API_BASE}/albums/${album.id}/tracks?limit=1`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    const tracksData = await tracksRes.json();
-    const track = tracksData.items?.[0];
-    if (!track) return null;
-    return mapToTrack({
-      ...track,
-      album,
-      duration_ms: track.duration_ms,
-    });
+  // Step 2: batch fetch full albums (includes tracks.items) — 2 requests total instead of N+1
+  const batchRes = await fetch(`${API_BASE}/albums?ids=${ids}`, {
+    headers: { Authorization: `Bearer ${token}` },
   });
+  if (!batchRes.ok) throw new Error(`Spotify albums batch failed: ${batchRes.status}`);
+  const batchData = await batchRes.json();
 
-  const tracks = await Promise.all(trackPromises);
-  return tracks.filter(Boolean) as Track[];
+  return batchData.albums
+    .map((album: any) => {
+      const track = album?.tracks?.items?.[0];
+      if (!track) return null;
+      return mapToTrack({ ...track, album });
+    })
+    .filter(Boolean) as Track[];
 }
 
 export async function getFeaturedTracks(limit = 10): Promise<Track[]> {
-  return searchTracks('top hits 2024', limit);
+  return searchTracks(`top hits ${new Date().getFullYear()}`, limit);
 }
