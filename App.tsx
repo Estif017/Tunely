@@ -11,6 +11,7 @@ import { getPlaylistByUrl } from './src/adapters/DeezerAdapter';
 import { clearExpiredCache } from './src/cache/streamCache';
 import { PlayerProvider, usePlayer } from './src/state/usePlayer';
 import PlayerBar from './src/components/PlayerBar';
+import NowPlayingCard from './src/components/NowPlayingCard';
 
 // ─── Themes ──────────────────────────────────────────────────────────────────
 const DARK = {
@@ -45,15 +46,15 @@ function fmtSecs(secs: number) {
 }
 
 // ─── TrackRow ─────────────────────────────────────────────────────────────────
-function TrackRow({ track, index, C, isActive, allTracks }: {
-  track: Track; index: number; C: Theme; isActive: boolean; allTracks: Track[];
+function TrackRow({ track, index, C, isActive, allTracks, onAfterPlay }: {
+  track: Track; index: number; C: Theme; isActive: boolean; allTracks: Track[]; onAfterPlay?: () => void;
 }) {
   const { playTrack } = usePlayer();
   const color = CARD_COLORS[index % CARD_COLORS.length];
   return (
     <TouchableOpacity
       style={[styles.trackRow, { borderBottomColor: C.border }]}
-      onPress={() => playTrack(track, allTracks)}
+      onPress={() => { playTrack(track, allTracks); onAfterPlay?.(); }}
     >
       {track.albumArt
         ? <Image source={{ uri: track.albumArt }} style={styles.trackThumb} />
@@ -72,15 +73,15 @@ function TrackRow({ track, index, C, isActive, allTracks }: {
 }
 
 // ─── FeaturedCard ─────────────────────────────────────────────────────────────
-function FeaturedCard({ track, index, C, isActive, allTracks }: {
-  track: Track; index: number; C: Theme; isActive: boolean; allTracks: Track[];
+function FeaturedCard({ track, index, C, isActive, allTracks, onAfterPlay }: {
+  track: Track; index: number; C: Theme; isActive: boolean; allTracks: Track[]; onAfterPlay?: () => void; // already correct
 }) {
   const { playTrack } = usePlayer();
   const color = CARD_COLORS[index % CARD_COLORS.length];
   return (
     <TouchableOpacity
       style={[styles.featuredCard, { backgroundColor: color + '22', borderColor: isActive ? color : color + '44' }]}
-      onPress={() => playTrack(track, allTracks)}
+      onPress={() => { playTrack(track, allTracks); onAfterPlay?.(); }}
     >
       {track.albumArt
         ? <Image source={{ uri: track.albumArt }} style={styles.featuredArt} />
@@ -106,6 +107,8 @@ function InnerApp() {
   const [isDark, setIsDark] = useState(true);
   const C = isDark ? DARK : LIGHT;
   const { currentTrack } = usePlayer();
+  const [showNowPlaying, setShowNowPlaying] = useState(false);
+  const openNowPlaying = useCallback(() => setShowNowPlaying(true), []);
 
   const [trending,    setTrending]    = useState<Track[]>([]);
   const [newReleases, setNewReleases] = useState<Track[]>([]);
@@ -228,7 +231,7 @@ function InnerApp() {
                       ? <Text style={[styles.emptyText, { color: C.textMuted }]}>No results found</Text>
                       : searchResults.map((t, i) => (
                           <TrackRow key={t.id} track={t} index={i} C={C}
-                            isActive={currentTrack?.id === t.id} allTracks={searchResults} />
+                            isActive={currentTrack?.id === t.id} allTracks={searchResults} onAfterPlay={openNowPlaying} />
                         ))}
                 </View>}
           </View>
@@ -254,7 +257,7 @@ function InnerApp() {
               : <View style={[styles.trackList, { backgroundColor: C.surface, borderColor: C.border }]}>
                   {playlistTracks.map((t, i) => (
                     <TrackRow key={t.id} track={t} index={i} C={C}
-                      isActive={currentTrack?.id === t.id} allTracks={playlistTracks} />
+                      isActive={currentTrack?.id === t.id} allTracks={playlistTracks} onAfterPlay={openNowPlaying} />
                   ))}
                 </View>}
           </View>
@@ -269,7 +272,7 @@ function InnerApp() {
               : <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.hScroll}>
                   {trending.map((t, i) => (
                     <FeaturedCard key={t.id} track={t} index={i} C={C}
-                      isActive={currentTrack?.id === t.id} allTracks={trending} />
+                      isActive={currentTrack?.id === t.id} allTracks={trending} onAfterPlay={openNowPlaying} />
                   ))}
                 </ScrollView>}
 
@@ -293,7 +296,7 @@ function InnerApp() {
               : <View style={[styles.trackList, { backgroundColor: C.surface, borderColor: C.border }]}>
                   {newReleases.map((t, i) => (
                     <TrackRow key={t.id} track={t} index={i} C={C}
-                      isActive={currentTrack?.id === t.id} allTracks={newReleases} />
+                      isActive={currentTrack?.id === t.id} allTracks={newReleases} onAfterPlay={openNowPlaying} />
                   ))}
                 </View>}
           </>
@@ -310,7 +313,8 @@ function InnerApp() {
       </ScrollView>
 
       {/* PlayerBar — sits above the tab bar */}
-      <PlayerBar colors={C} />
+      <PlayerBar colors={C} onExpand={openNowPlaying} />
+      <NowPlayingCard visible={showNowPlaying} onClose={() => setShowNowPlaying(false)} colors={C} />
 
       {/* Bottom nav */}
       <View style={[styles.bottomNav, { backgroundColor: C.surface, borderTopColor: C.border }]}>
