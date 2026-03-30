@@ -1,24 +1,26 @@
 /**
  * Tunely Stream Backend
  *
- * Uses yt-dlp-exec (npm) to resolve YouTube videoIds to direct audio URLs.
- * No Python or system yt-dlp installation required — the npm package
- * bundles a platform-appropriate binary downloaded at npm install time.
+ * Uses yt-dlp (Nix binary, installed via nixpacks.toml) to resolve YouTube
+ * videoIds to direct audio URLs.
  *
  * HOW TO RUN:
  *   cd backend && node index.js
  *
  * REQUIREMENTS:
+ *   - yt-dlp in PATH  (on Railway: installed via nixpacks.toml)
+ *   - ffmpeg in PATH  (on Railway: installed via nixpacks.toml)
  *   - Node.js 16+
- *   - npm install  (downloads yt-dlp binary automatically)
+ *
+ * Local dev: install yt-dlp with  pip install yt-dlp  or  brew install yt-dlp
  */
 
-const express       = require('express');
-const cors          = require('cors');
-const os            = require('os');
-const fs            = require('fs');
-const path          = require('path');
-const ytDlp         = require('yt-dlp-exec');
+const express             = require('express');
+const cors                = require('cors');
+const { execFile, spawn } = require('child_process');
+const os                  = require('os');
+const fs                  = require('fs');
+const path                = require('path');
 
 const app  = express();
 const PORT = process.env.PORT || 3002;
@@ -29,29 +31,34 @@ app.use(express.json());
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /**
- * Extract a direct audio CDN URL for a YouTube video using yt-dlp-exec.
+ * Extract a direct audio CDN URL for a YouTube video using yt-dlp --dump-json.
  * Returns { url, ext, abr, title } or throws.
  */
-async function resolveWithYtDlp(videoId) {
-  const info = await ytDlp(`https://www.youtube.com/watch?v=${videoId}`, {
-    dumpSingleJson: true,
-    noWarnings: true,
-    noCallHome: true,
-    preferFreeFormats: true,
-    youtubeSkipDashManifest: true,
-    format: 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best',
-    extractorArgs: 'youtube:player_client=android,web',
+function resolveWithYtDlp(videoId) {
+  return new Promise((resolve, reject) => {
+    const args = [
+      '--dump-json',
+      '-f', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best',
+      '--no-warnings',
+      '--no-playlist',
+      '--extractor-args', 'youtube:player_client=android,web',
+      `https://www.youtube.com/watch?v=${videoId}`,
+    ];
+
+    execFile('yt-dlp', args, { timeout: 30000 }, (err, stdout, stderr) => {
+      if (err) return reject(new Error(err.message));
+      try {
+        const jsonLine = stdout.split('\n').find(l => l.trim().startsWith('{'));
+        if (!jsonLine) return reject(new Error('No JSON output from yt-dlp'));
+        const info = JSON.parse(jsonLine);
+        const url  = info.url || info.formats?.find(f => f.acodec !== 'none')?.url;
+        if (!url) return reject(new Error('No playable audio URL found'));
+        resolve({ url, ext: info.ext || '?', abr: info.abr || null, title: info.title || '' });
+      } catch (e) {
+        reject(new Error('Failed to parse yt-dlp output: ' + stdout.slice(0, 200)));
+      }
+    });
   });
-
-  const url = info.url || info.formats?.find(f => f.acodec !== 'none')?.url;
-  if (!url) throw new Error('No playable audio URL found');
-
-  return {
-    url,
-    ext:   info.ext   || '?',
-    abr:   info.abr   || null,
-    title: info.title || '',
-  };
 }
 
 // ── Routes ────────────────────────────────────────────────────────────────────
@@ -87,10 +94,10 @@ app.get('/audio/:videoId', async (req, res) => {
  *
  * Downloads the best audio track via yt-dlp to a local temp file, then
  * serves it with proper Content-Length and Range support for seeking.
- * The temp file is reused for ~1 hour (in-memory cache).
+ * Used by native (iOS/Android) clients only.
  */
 const streamCache    = new Map();
-const STREAM_CACHE_TTL = 60 * 60 * 1000;
+const STREAM_CACHE_TTL = 60 * 60 * 1000; // 1 hour
 
 app.get('/stream/:videoId', async (req, res) => {
   const { videoId } = req.params;
@@ -107,15 +114,17 @@ app.get('/stream/:videoId', async (req, res) => {
   const tmpFile = path.join(os.tmpdir(), `tunely_${videoId}.%(ext)s`);
   console.log(`[stream] ⬇️  downloading ${videoId} via yt-dlp...`);
 
-  const proc = ytDlp.exec(`https://www.youtube.com/watch?v=${videoId}`, {
-    format: 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best',
-    noPlaylist: true,
-    noWarnings: true,
-    output: tmpFile,
-    forceOverwrites: true,
-    extractorArgs: 'youtube:player_client=android,web',
-  });
+  const args = [
+    '-f', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best',
+    '--no-playlist',
+    '--no-warnings',
+    '--extractor-args', 'youtube:player_client=android,web',
+    '-o', tmpFile,
+    '--force-overwrites',
+    `https://www.youtube.com/watch?v=${videoId}`,
+  ];
 
+  const proc = spawn('yt-dlp', args, { timeout: 60000 });
   proc.stderr?.on('data', d => {
     const msg = d.toString().trim();
     if (msg) console.error('[yt-dlp]', msg);
@@ -245,6 +254,6 @@ app.get('/search', async (req, res) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🎵  Tunely stream backend  →  http://0.0.0.0:${PORT}`);
   console.log(`    /health          — status check`);
-  console.log(`    /audio/<videoId> — get CDN URL via yt-dlp-exec`);
+  console.log(`    /audio/<videoId> — get CDN URL via yt-dlp`);
   console.log(`    /proxy?url=<url> — CORS-safe audio proxy\n`);
 });

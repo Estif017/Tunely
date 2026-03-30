@@ -9,7 +9,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
-const KEY_PREFIX = 'stream_v3:'; // bump version to invalidate old cached CDN URLs
+const KEY_PREFIX = 'stream_v4:'; // bump version to invalidate old cached CDN URLs
 
 interface CacheEntry {
   url: string;
