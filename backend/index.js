@@ -1,26 +1,24 @@
 /**
  * Tunely Stream Backend
  *
- * Uses yt-dlp (native binary) to resolve a YouTube videoId to a direct,
- * playable audio URL.
+ * Uses yt-dlp-exec (npm) to resolve YouTube videoIds to direct audio URLs.
+ * No Python or system yt-dlp installation required — the npm package
+ * bundles a platform-appropriate binary downloaded at npm install time.
  *
  * HOW TO RUN:
  *   cd backend && node index.js
  *
  * REQUIREMENTS:
- *   - yt-dlp binary in PATH  (https://github.com/yt-dlp/yt-dlp)
- *   - ffmpeg in PATH
  *   - Node.js 16+
- *
- * For production, deploy to Railway (nixpacks.toml installs yt-dlp + ffmpeg).
+ *   - npm install  (downloads yt-dlp binary automatically)
  */
 
-const express            = require('express');
-const cors               = require('cors');
-const { execFile, spawn } = require('child_process');
-const os                 = require('os');
-const fs                 = require('fs');
-const path               = require('path');
+const express       = require('express');
+const cors          = require('cors');
+const os            = require('os');
+const fs            = require('fs');
+const path          = require('path');
+const ytDlp         = require('yt-dlp-exec');
 
 const app  = express();
 const PORT = process.env.PORT || 3002;
@@ -31,30 +29,29 @@ app.use(express.json());
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /**
- * Run yt-dlp (native binary) to extract a direct stream URL for a YouTube video.
+ * Extract a direct audio CDN URL for a YouTube video using yt-dlp-exec.
  * Returns { url, ext, abr, title } or throws.
  */
-function resolveWithYtDlp(videoId) {
-  return new Promise((resolve, reject) => {
-    const args = [
-      '--no-playlist',
-      '--no-warnings',
-      '--skip-download',
-      '--print', '%(url)s\t%(ext)s\t%(abr)s\t%(title)s',
-      '-f', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best',
-      '--extractor-args', 'youtube:player_client=android,web',
-      `https://www.youtube.com/watch?v=${videoId}`,
-    ];
-
-    execFile('yt-dlp', args, { timeout: 30000 }, (err, stdout, stderr) => {
-      if (err) return reject(new Error(err.message));
-      const line = stdout.trim().split('\n').find(l => l.includes('\t'));
-      if (!line) return reject(new Error('No output from yt-dlp'));
-      const [url, ext, abr, ...titleParts] = line.split('\t');
-      if (!url || url === 'NA') return reject(new Error('No playable format found'));
-      resolve({ url, ext: ext || '?', abr: parseFloat(abr) || null, title: titleParts.join('\t') });
-    });
+async function resolveWithYtDlp(videoId) {
+  const info = await ytDlp(`https://www.youtube.com/watch?v=${videoId}`, {
+    dumpSingleJson: true,
+    noWarnings: true,
+    noCallHome: true,
+    preferFreeFormats: true,
+    youtubeSkipDashManifest: true,
+    format: 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best',
+    extractorArgs: 'youtube:player_client=android,web',
   });
+
+  const url = info.url || info.formats?.find(f => f.acodec !== 'none')?.url;
+  if (!url) throw new Error('No playable audio URL found');
+
+  return {
+    url,
+    ext:   info.ext   || '?',
+    abr:   info.abr   || null,
+    title: info.title || '',
+  };
 }
 
 // ── Routes ────────────────────────────────────────────────────────────────────
@@ -66,11 +63,9 @@ app.get('/health', (req, res) => {
 /**
  * GET /audio/:videoId
  * Returns: { url, ext, abr, title }
- * Error:   { error }
  */
 app.get('/audio/:videoId', async (req, res) => {
   const { videoId } = req.params;
-
   if (!videoId || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
     return res.status(400).json({ error: 'Invalid videoId' });
   }
@@ -91,11 +86,11 @@ app.get('/audio/:videoId', async (req, res) => {
  * GET /stream/:videoId
  *
  * Downloads the best audio track via yt-dlp to a local temp file, then
- * serves it with proper Content-Length so seekable playback works.
+ * serves it with proper Content-Length and Range support for seeking.
  * The temp file is reused for ~1 hour (in-memory cache).
  */
-const streamCache = new Map(); // videoId → { file, ext, cachedAt }
-const STREAM_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+const streamCache    = new Map();
+const STREAM_CACHE_TTL = 60 * 60 * 1000;
 
 app.get('/stream/:videoId', async (req, res) => {
   const { videoId } = req.params;
@@ -103,7 +98,6 @@ app.get('/stream/:videoId', async (req, res) => {
     return res.status(400).json({ error: 'Invalid videoId' });
   }
 
-  // Serve from in-memory cache if fresh
   const cached = streamCache.get(videoId);
   if (cached && Date.now() - cached.cachedAt < STREAM_CACHE_TTL && fs.existsSync(cached.file)) {
     console.log(`[stream] 🟢 cache hit → ${videoId}`);
@@ -113,18 +107,16 @@ app.get('/stream/:videoId', async (req, res) => {
   const tmpFile = path.join(os.tmpdir(), `tunely_${videoId}.%(ext)s`);
   console.log(`[stream] ⬇️  downloading ${videoId} via yt-dlp...`);
 
-  const args = [
-    '-f', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best',
-    '--no-playlist',
-    '--no-warnings',
-    '--extractor-args', 'youtube:player_client=android,web',
-    '-o', tmpFile,
-    '--force-overwrites',
-    `https://www.youtube.com/watch?v=${videoId}`,
-  ];
+  const proc = ytDlp.exec(`https://www.youtube.com/watch?v=${videoId}`, {
+    format: 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best',
+    noPlaylist: true,
+    noWarnings: true,
+    output: tmpFile,
+    forceOverwrites: true,
+    extractorArgs: 'youtube:player_client=android,web',
+  });
 
-  const proc = spawn('yt-dlp', args, { timeout: 60000 });
-  proc.stderr.on('data', d => {
+  proc.stderr?.on('data', d => {
     const msg = d.toString().trim();
     if (msg) console.error('[yt-dlp]', msg);
   });
@@ -139,7 +131,6 @@ app.get('/stream/:videoId', async (req, res) => {
     const prefix  = `tunely_${videoId}.`;
     const entries = fs.readdirSync(tmpDir).filter(f => f.startsWith(prefix));
     if (entries.length === 0) {
-      console.error(`[stream] ❌ no output file found for ${videoId}`);
       if (!res.headersSent) res.status(500).json({ error: 'output file missing' });
       return;
     }
@@ -254,6 +245,6 @@ app.get('/search', async (req, res) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🎵  Tunely stream backend  →  http://0.0.0.0:${PORT}`);
   console.log(`    /health          — status check`);
-  console.log(`    /audio/<videoId> — get stream URL`);
+  console.log(`    /audio/<videoId> — get CDN URL via yt-dlp-exec`);
   console.log(`    /proxy?url=<url> — CORS-safe audio proxy\n`);
 });
