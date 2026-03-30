@@ -298,8 +298,8 @@ app.get('/search', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`\n🎵  Tunely stream backend  →  http://localhost:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`\n🎵  Tunely stream backend  →  http://0.0.0.0:${PORT}`);
   console.log(`    /health          — status check`);
   console.log(`    /audio/<videoId> — get stream URL`);
   console.log(`    /proxy?url=<url> — CORS-safe audio proxy\n`);
