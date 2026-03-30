@@ -52,6 +52,7 @@ export interface PlayerContextType {
   addToQueue: (track: Track) => void;
   toggleShuffle: () => void;
   toggleRepeat: () => void;
+  stop: () => void;
 }
 
 // ─── Context ───────────────────────────────────────────────────────────────────
@@ -98,6 +99,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         const url = await resolveTrackStream(track);
         if (url) {
           player.replace({ uri: url });
+          player.play();
         } else {
           console.warn('[usePlayer] no stream URL for', track.title);
         }
@@ -228,6 +230,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     setRepeat((r) => (r === 'none' ? 'one' : r === 'one' ? 'all' : 'none'));
   }, []);
 
+  const stop = useCallback(() => {
+    player.pause();
+    setQueue([]);
+    setQueueIndex(-1);
+  }, [player]);
+
   // ── Derived state ───────────────────────────────────────────────────────────
   const currentTrack =
     queueIndex >= 0 && queueIndex < queue.length ? queue[queueIndex] : null;
@@ -252,6 +260,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     addToQueue,
     toggleShuffle,
     toggleRepeat,
+    stop,
   };
 
   return (

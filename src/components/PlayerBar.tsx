@@ -23,7 +23,7 @@ import {
   StyleSheet,
   GestureResponderEvent,
 } from 'react-native';
-import { usePlayer, RepeatMode } from '../state/usePlayer';
+import { usePlayer } from '../state/usePlayer';
 
 // ─── Theme colours passed in from the parent ──────────────────────────────────
 interface Colors {
@@ -50,12 +50,6 @@ function fmtSecs(secs: number): string {
   return `${m}:${rem.toString().padStart(2, '0')}`;
 }
 
-function repeatIcon(mode: RepeatMode): string {
-  if (mode === 'one') return '🔂';
-  if (mode === 'all') return '🔁';
-  return '🔁';
-}
-
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function PlayerBar({ colors: C, onExpand }: Props) {
@@ -66,13 +60,12 @@ export default function PlayerBar({ colors: C, onExpand }: Props) {
     positionSecs,
     durationSecs,
     shuffle,
-    repeat,
     togglePlayPause,
     next,
     previous,
     seek,
     toggleShuffle,
-    toggleRepeat,
+    stop,
   } = usePlayer();
 
   const [barWidth, setBarWidth] = useState(0);
@@ -176,16 +169,9 @@ export default function PlayerBar({ colors: C, onExpand }: Props) {
             <Text style={[styles.icon, { color: C.text }]}>⏭</Text>
           </TouchableOpacity>
 
-          {/* Repeat */}
-          <TouchableOpacity onPress={toggleRepeat} style={styles.iconBtn}>
-            <Text
-              style={[
-                styles.icon,
-                { color: repeat !== 'none' ? C.accent : C.textMuted },
-              ]}
-            >
-              {repeatIcon(repeat)}
-            </Text>
+          {/* Stop / dismiss */}
+          <TouchableOpacity onPress={stop} style={styles.iconBtn}>
+            <Text style={[styles.icon, { color: C.textMuted }]}>✕</Text>
           </TouchableOpacity>
         </View>
       </TouchableOpacity>
@@ -197,10 +183,8 @@ export default function PlayerBar({ colors: C, onExpand }: Props) {
 
 const styles = StyleSheet.create({
   container: {
-    position: 'absolute',
-    left: 10,
-    right: 10,
-    bottom: 66, // sits just above the 64px tab bar
+    marginHorizontal: 10,
+    marginBottom: 4,
     borderRadius: 18,
     borderWidth: 1.5,
     overflow: 'hidden',

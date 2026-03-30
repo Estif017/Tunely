@@ -35,8 +35,8 @@ export async function resolveTrackStream(track: Track): Promise<string | null> {
       return track.streamUrl ?? null;
     }
 
-    // ── Step 3: extract audio stream ──────────────────────────────────────────
-    const streamUrl = await extractStreamUrl(videoId);
+    // ── Step 3: build stream URL (backend handles yt-dlp) ────────────────────
+    const streamUrl = extractStreamUrl(videoId);
     if (!streamUrl) {
       console.warn('[resolver] 🟡 stream extraction failed — falling back to preview');
       return track.streamUrl ?? null;

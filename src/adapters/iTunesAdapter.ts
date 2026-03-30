@@ -1,6 +1,5 @@
 import { Track } from '../models';
-
-const API = 'https://itunes.apple.com';
+import { STREAM_BACKEND_URL } from '../config';
 
 function mapToTrack(item: any): Track | null {
   if (!item.trackId || !item.previewUrl) return null;
@@ -18,8 +17,8 @@ function mapToTrack(item: any): Track | null {
 }
 
 export async function searchTracks(query: string, limit = 20): Promise<Track[]> {
-  const params = new URLSearchParams({ term: query, media: 'music', entity: 'song', limit: String(limit) });
-  const res = await fetch(`${API}/search?${params}`);
+  const params = new URLSearchParams({ q: query, limit: String(limit) });
+  const res = await fetch(`${STREAM_BACKEND_URL}/search?${params}`);
   if (!res.ok) throw new Error(`Search failed: ${res.status}`);
   const data = await res.json();
   return data.results.map(mapToTrack).filter(Boolean) as Track[];

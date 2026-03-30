@@ -20,6 +20,7 @@ import {
   Image,
   Modal,
   PanResponder,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -77,6 +78,7 @@ export default function NowPlayingCard({ visible, onClose, colors: C }: Props) {
     toggleRepeat,
     queue,
     queueIndex,
+    playTrack,
   } = usePlayer();
 
   const [barWidth, setBarWidth] = useState(1);
@@ -153,7 +155,9 @@ export default function NowPlayingCard({ visible, onClose, colors: C }: Props) {
               <View style={styles.chevronBar} />
             </TouchableOpacity>
             <Text style={styles.headerLabel}>Now Playing</Text>
-            <View style={{ width: 40 }} />
+            <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}>
+              <Text style={styles.closeIcon}>✕</Text>
+            </TouchableOpacity>
           </View>
 
           {/* Album art */}
@@ -259,22 +263,32 @@ export default function NowPlayingCard({ visible, onClose, colors: C }: Props) {
             </TouchableOpacity>
           </View>
 
-          {/* Up Next hint */}
-          {nextTrack && (
+          {/* Up Next — scrollable queue */}
+          {queueIndex + 1 < queue.length && (
             <View style={styles.upNext}>
               <Text style={styles.upNextLabel}>Up Next</Text>
-              <View style={styles.upNextRow}>
-                {nextTrack.albumArt
-                  ? <Image source={{ uri: nextTrack.albumArt }} style={styles.upNextArt} />
-                  : <View style={[styles.upNextArt, { backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' }]}>
-                      <Text style={{ fontSize: 14 }}>♪</Text>
+              <ScrollView style={styles.queueList} showsVerticalScrollIndicator={false} nestedScrollEnabled>
+                {queue.slice(queueIndex + 1, queueIndex + 51).map((track, i) => (
+                  <TouchableOpacity
+                    key={track.id}
+                    style={styles.upNextRow}
+                    onPress={() => playTrack(track)}
+                    activeOpacity={0.7}
+                  >
+                    {track.albumArt
+                      ? <Image source={{ uri: track.albumArt }} style={styles.upNextArt} />
+                      : <View style={[styles.upNextArt, { backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' }]}>
+                          <Text style={{ fontSize: 14 }}>♪</Text>
+                        </View>
+                    }
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.upNextTitle} numberOfLines={1}>{track.title}</Text>
+                      <Text style={styles.upNextArtist} numberOfLines={1}>{track.artist}</Text>
                     </View>
-                }
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.upNextTitle} numberOfLines={1}>{nextTrack.title}</Text>
-                  <Text style={styles.upNextArtist} numberOfLines={1}>{nextTrack.artist}</Text>
-                </View>
-              </View>
+                    <Text style={styles.queueNum}>#{queueIndex + 2 + i}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
             </View>
           )}
 
@@ -492,6 +506,19 @@ const styles = StyleSheet.create({
     marginLeft: 3, // optical center for ▶
   },
 
+  // ── Close button ──────────────────────────────────────────────────────────
+  closeBtn: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeIcon: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+
   // ── Up Next ───────────────────────────────────────────────────────────────
   upNext: {
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -506,10 +533,14 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     marginBottom: 10,
   },
+  queueList: {
+    maxHeight: 200,
+  },
   upNextRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    paddingVertical: 6,
   },
   upNextArt: {
     width: 40,
@@ -525,5 +556,10 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.4)',
     fontSize: 11,
     marginTop: 2,
+  },
+  queueNum: {
+    color: 'rgba(255,255,255,0.25)',
+    fontSize: 11,
+    marginLeft: 4,
   },
 });

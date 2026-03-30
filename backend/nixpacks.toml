@@ -1,0 +1,14 @@
+# Railway / Nixpacks build config for the Tunely stream backend
+# Installs both Node.js and Python (for yt-dlp)
+
+[phases.setup]
+nixPkgs = ["nodejs_20", "python312", "python312Packages.pip", "ffmpeg"]
+
+[phases.install]
+cmds = [
+  "npm install",
+  "pip install -U yt-dlp"
+]
+
+[start]
+cmd = "node index.js"

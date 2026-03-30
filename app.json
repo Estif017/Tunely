@@ -24,7 +24,14 @@
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro",
+      "output": "single",
+      "name": "Tunely",
+      "shortName": "Tunely",
+      "lang": "en",
+      "themeColor": "#1DB954",
+      "backgroundColor": "#1C1C1E"
     },
     "plugins": [
       "expo-audio"

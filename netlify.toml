@@ -1,0 +1,15 @@
+[build]
+  command   = "npx expo export --platform web"
+  publish   = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+  # Set EXPO_PUBLIC_BACKEND_URL in Netlify → Site settings → Environment variables
+  # to point at your deployed Railway backend, e.g.:
+  #   EXPO_PUBLIC_BACKEND_URL = https://tunely-backend.up.railway.app
+
+# SPA fallback — all routes serve index.html
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200
