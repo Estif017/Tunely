@@ -1,9 +1,5 @@
-# Railway / Nixpacks — Node.js + Python for yt-dlp
-# Nixpacks auto-detects Node from package.json and Python from requirements.txt.
-# This file just adds ffmpeg and pins the start command.
-
 [phases.setup]
-nixPkgs = ["ffmpeg"]
+nixPkgs = ["nodejs", "yt-dlp", "ffmpeg"]
 
-[start]
-cmd = "node index.js"
+[phases.install]
+cmds = ["npm install"]

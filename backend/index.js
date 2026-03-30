@@ -1,20 +1,18 @@
 /**
  * Tunely Stream Backend
  *
- * Uses Python's yt-dlp to resolve a YouTube videoId to a direct, playable URL.
- * Returns a googlevideo.com CDN URL that expo-audio can stream directly.
+ * Uses yt-dlp (native binary) to resolve a YouTube videoId to a direct,
+ * playable audio URL.
  *
  * HOW TO RUN:
  *   cd backend && node index.js
  *
  * REQUIREMENTS:
- *   - Python 3.x with yt-dlp installed  (pip install yt-dlp)
+ *   - yt-dlp binary in PATH  (https://github.com/yt-dlp/yt-dlp)
+ *   - ffmpeg in PATH
  *   - Node.js 16+
  *
- * For Expo Go on a physical phone, set STREAM_BACKEND_URL in src/config.ts
- * to your machine's local IP:  http://192.168.x.x:3001
- *
- * For production, deploy to Railway / Render / Fly.io (all have free tiers).
+ * For production, deploy to Railway (nixpacks.toml installs yt-dlp + ffmpeg).
  */
 
 const express            = require('express');
@@ -32,56 +30,29 @@ app.use(express.json());
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Detect the python binary name available on this machine */
-function pythonBin() {
-  return os.platform() === 'win32' ? 'python' : 'python3';
-}
-
 /**
- * Run yt-dlp via Python to get a direct stream URL for a YouTube video.
- * Returns the best available audio URL (prefers m4a, falls back to mp4).
+ * Run yt-dlp (native binary) to extract a direct stream URL for a YouTube video.
+ * Returns { url, ext, abr, title } or throws.
  */
 function resolveWithYtDlp(videoId) {
   return new Promise((resolve, reject) => {
-    const script = `
-import yt_dlp, json, sys
-opts = {
-    'quiet': True,
-    'no_warnings': True,
-    'skip_download': True,
-    'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
-}
-try:
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info('https://www.youtube.com/watch?v=${videoId}', download=False)
-        fmts = info.get('formats', [])
-        # Prefer audio-only formats (no video codec)
-        audio_only = [f for f in fmts if f.get('vcodec') == 'none' and f.get('acodec') not in (None, 'none') and f.get('url')]
-        # Fall back to combined formats that have audio (e.g. format 18)
-        combined   = [f for f in fmts if f.get('acodec') not in (None, 'none') and f.get('url') and f.get('ext') in ('mp4','m4a','webm')]
-        candidates = audio_only or combined
-        # Sort: prefer m4a/mp4, higher bitrate
-        candidates.sort(key=lambda f: (0 if f.get('ext') in ('m4a','mp4') else 1, -(f.get('abr') or f.get('tbr') or 0)))
-        best = candidates[0] if candidates else None
-        if best:
-            print(json.dumps({'url': best['url'], 'ext': best.get('ext','?'), 'abr': best.get('abr'), 'title': info.get('title','')}))
-        else:
-            print(json.dumps({'error': 'No playable format found'}))
-except Exception as e:
-    print(json.dumps({'error': str(e)}))
-`;
-    execFile(pythonBin(), ['-c', script], { timeout: 30000 }, (err, stdout, stderr) => {
+    const args = [
+      '--no-playlist',
+      '--no-warnings',
+      '--skip-download',
+      '--print', '%(url)s\t%(ext)s\t%(abr)s\t%(title)s',
+      '-f', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best',
+      '--extractor-args', 'youtube:player_client=android,web',
+      `https://www.youtube.com/watch?v=${videoId}`,
+    ];
+
+    execFile('yt-dlp', args, { timeout: 30000 }, (err, stdout, stderr) => {
       if (err) return reject(new Error(err.message));
-      try {
-        // stdout may have a deprecation warning line before the JSON — find the JSON line
-        const jsonLine = stdout.split('\n').find(l => l.trim().startsWith('{'));
-        if (!jsonLine) return reject(new Error('No JSON output from yt-dlp'));
-        const result = JSON.parse(jsonLine);
-        if (result.error) return reject(new Error(result.error));
-        resolve(result);
-      } catch (e) {
-        reject(new Error('Failed to parse yt-dlp output: ' + stdout.substring(0, 200)));
-      }
+      const line = stdout.trim().split('\n').find(l => l.includes('\t'));
+      if (!line) return reject(new Error('No output from yt-dlp'));
+      const [url, ext, abr, ...titleParts] = line.split('\t');
+      if (!url || url === 'NA') return reject(new Error('No playable format found'));
+      resolve({ url, ext: ext || '?', abr: parseFloat(abr) || null, title: titleParts.join('\t') });
     });
   });
 }
@@ -105,14 +76,13 @@ app.get('/audio/:videoId', async (req, res) => {
   }
 
   try {
-    console.log(`[stream] resolving ${videoId}...`);
+    console.log(`[audio] resolving ${videoId}...`);
     const result = await resolveWithYtDlp(videoId);
-    console.log(`[stream] ✅ ${videoId} → ${result.ext} ${result.abr ?? '?'}kbps — "${result.title}"`);
-    // Cache for 4 hours (googlevideo.com URLs expire after ~6h)
+    console.log(`[audio] ✅ ${videoId} → ${result.ext} ${result.abr ?? '?'}kbps — "${result.title}"`);
     res.set('Cache-Control', 'public, max-age=14400');
     res.json(result);
   } catch (err) {
-    console.error(`[stream] ❌ ${videoId}:`, err.message);
+    console.error(`[audio] ❌ ${videoId}:`, err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -121,12 +91,10 @@ app.get('/audio/:videoId', async (req, res) => {
  * GET /stream/:videoId
  *
  * Downloads the best audio track via yt-dlp to a local temp file, then
- * serves it with proper Content-Length so the browser <audio> element can
- * seek.  The temp file is reused for ~1 hour before being refreshed.
- *
- * This completely avoids CORS — the browser only ever talks to localhost.
+ * serves it with proper Content-Length so seekable playback works.
+ * The temp file is reused for ~1 hour (in-memory cache).
  */
-const streamCache = new Map(); // videoId → { file, cachedAt }
+const streamCache = new Map(); // videoId → { file, ext, cachedAt }
 const STREAM_CACHE_TTL = 60 * 60 * 1000; // 1 hour
 
 app.get('/stream/:videoId', async (req, res) => {
@@ -145,10 +113,8 @@ app.get('/stream/:videoId', async (req, res) => {
   const tmpFile = path.join(os.tmpdir(), `tunely_${videoId}.%(ext)s`);
   console.log(`[stream] ⬇️  downloading ${videoId} via yt-dlp...`);
 
-  const py = pythonBin();
   const args = [
-    '-m', 'yt_dlp',
-    '-f', 'bestaudio/best',   // take whatever is available
+    '-f', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best',
     '--no-playlist',
     '--no-warnings',
     '--extractor-args', 'youtube:player_client=android,web',
@@ -157,7 +123,7 @@ app.get('/stream/:videoId', async (req, res) => {
     `https://www.youtube.com/watch?v=${videoId}`,
   ];
 
-  const proc = spawn(py, args, { timeout: 60000 });
+  const proc = spawn('yt-dlp', args, { timeout: 60000 });
   proc.stderr.on('data', d => {
     const msg = d.toString().trim();
     if (msg) console.error('[yt-dlp]', msg);
@@ -169,7 +135,6 @@ app.get('/stream/:videoId', async (req, res) => {
       if (!res.headersSent) res.status(500).json({ error: 'yt-dlp failed' });
       return;
     }
-    // Find the actual downloaded file (extension varies: m4a, webm, mp4…)
     const tmpDir  = os.tmpdir();
     const prefix  = `tunely_${videoId}.`;
     const entries = fs.readdirSync(tmpDir).filter(f => f.startsWith(prefix));
@@ -179,7 +144,7 @@ app.get('/stream/:videoId', async (req, res) => {
       return;
     }
     const actualFile = path.join(tmpDir, entries[0]);
-    const ext = path.extname(actualFile).slice(1); // 'webm', 'm4a', 'mp4'…
+    const ext = path.extname(actualFile).slice(1);
     streamCache.set(videoId, { file: actualFile, ext, cachedAt: Date.now() });
     console.log(`[stream] ✅ ready → ${videoId} (${ext})`);
     serveFile(actualFile, ext, req, res);
@@ -194,7 +159,7 @@ app.get('/stream/:videoId', async (req, res) => {
 const EXT_MIME = { m4a: 'audio/mp4', mp4: 'audio/mp4', webm: 'audio/webm', ogg: 'audio/ogg', opus: 'audio/ogg' };
 
 function serveFile(filePath, ext, req, res) {
-  const stat = fs.statSync(filePath);
+  const stat  = fs.statSync(filePath);
   const total = stat.size;
   const range = req.headers['range'];
   const mime  = EXT_MIME[ext] || 'audio/mp4';
@@ -220,13 +185,7 @@ function serveFile(filePath, ext, req, res) {
 
 /**
  * GET /proxy?url=<encoded CDN URL>
- *
- * Proxies a googlevideo.com (or any) audio stream through this server so that
- * browser clients don't hit CORS / mixed-content restrictions.
- *
- * expo-audio on web uses an <audio> element, which the browser blocks when the
- * src is a cross-origin URL without CORS headers.  By piping through localhost
- * the browser sees a same-origin (or explicitly CORS-allowed) stream.
+ * Pipes the upstream audio stream through this server to avoid browser CORS.
  */
 app.get('/proxy', async (req, res) => {
   const { url } = req.query;
@@ -238,14 +197,11 @@ app.get('/proxy', async (req, res) => {
     const rangeHeader = req.headers['range'];
     const upstream = await fetch(url, {
       headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
-          '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
         ...(rangeHeader ? { Range: rangeHeader } : {}),
       },
     });
 
-    // Forward relevant headers so the browser audio element can seek
     const contentType = upstream.headers.get('content-type') || 'audio/mp4';
     res.set('Content-Type', contentType);
     res.set('Access-Control-Allow-Origin', '*');
@@ -259,7 +215,6 @@ app.get('/proxy', async (req, res) => {
 
     res.status(upstream.status);
 
-    // Pipe the upstream body straight to the client
     const { Readable } = require('stream');
     Readable.fromWeb(upstream.body).pipe(res);
   } catch (err) {
@@ -270,9 +225,7 @@ app.get('/proxy', async (req, res) => {
 
 /**
  * GET /search?q=<query>&limit=<n>
- *
- * Proxies iTunes Search API server-side to avoid CORS / musics:// redirect
- * issues that occur when the browser calls it directly.
+ * Proxies iTunes Search API to avoid browser CORS.
  */
 app.get('/search', async (req, res) => {
   const { q, limit = '20' } = req.query;

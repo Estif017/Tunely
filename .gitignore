@@ -43,3 +43,6 @@ logs/
 
 # Cache
 .cache/
+
+# Local progress tracker (Claude-maintained, not for version control)
+progress.md
