@@ -1,40 +1,52 @@
 /**
  * Stream Extractor — resolves a YouTube videoId to a playable audio URL.
  *
- * Strategy:
- *   Return http://localhost:3002/stream/<videoId>
+ * Strategy differs by platform:
  *
- *   The backend downloads the audio via yt-dlp, caches it locally, and
- *   serves it with proper Content-Length + Range support so the browser
- *   <audio> element can seek.
+ *   Web browser
+ *   ───────────
+ *   1. Call GET /audio/:videoId  — backend runs yt-dlp to extract the CDN URL
+ *      (fast: just a URL extraction, no file download)
+ *   2. Return /proxy?url=<encoded CDN URL>  — backend pipes the CDN stream
+ *      through itself so CORS is never an issue and the browser starts
+ *      receiving audio bytes immediately.
  *
- *   Because the URL is always localhost the browser never hits a
- *   cross-origin restriction — no CORS issues at all.
- *
- * The backend lives in /backend/index.js — start it with:
- *   cd backend && node index.js
- *
- * The URL is configured in src/config.ts:
- *   STREAM_BACKEND_URL = 'http://localhost:3002'          (dev / Expo web)
- *   STREAM_BACKEND_URL = 'http://192.168.x.x:3002'       (Expo Go on phone)
- *   STREAM_BACKEND_URL = 'https://your-app.railway.app'  (production)
+ *   Native (iOS / Android)
+ *   ──────────────────────
+ *   Return /stream/:videoId — backend downloads with yt-dlp, caches the file,
+ *   serves it with Range support for seeking.
  */
 
+import { Platform } from 'react-native';
 import { STREAM_BACKEND_URL } from '../config';
 
-/**
- * Returns a direct streaming URL for the given YouTube videoId.
- *
- * The URL points to the local backend's /stream/:videoId endpoint which
- * handles yt-dlp extraction and serves the audio as a seekable file.
- *
- * Returns null if STREAM_BACKEND_URL is not configured.
- */
-export function extractStreamUrl(videoId: string): string | null {
+export async function extractStreamUrl(videoId: string): Promise<string | null> {
   if (!STREAM_BACKEND_URL) {
     console.warn('[streamExtractor] STREAM_BACKEND_URL not set in config');
     return null;
   }
+
+  if (Platform.OS === 'web') {
+    // On web: get the direct CDN URL via /audio/ then wrap in /proxy
+    // This avoids the "download entire file then respond" latency of /stream/
+    try {
+      const res = await fetch(`${STREAM_BACKEND_URL}/audio/${videoId}`);
+      if (!res.ok) {
+        console.warn(`[streamExtractor] /audio/ returned ${res.status}`);
+        return null;
+      }
+      const { url } = await res.json();
+      if (!url) return null;
+      const proxyUrl = `${STREAM_BACKEND_URL}/proxy?url=${encodeURIComponent(url)}`;
+      console.log(`[streamExtractor] web proxy URL → ${proxyUrl.slice(0, 80)}…`);
+      return proxyUrl;
+    } catch (err) {
+      console.warn('[streamExtractor] /audio/ fetch failed:', err);
+      return null;
+    }
+  }
+
+  // Native: /stream/ downloads and caches the file, serves with Range support
   const url = `${STREAM_BACKEND_URL}/stream/${videoId}`;
   console.log(`[streamExtractor] stream URL → ${url}`);
   return url;

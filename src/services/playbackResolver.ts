@@ -2,12 +2,11 @@
  * Brick 6 — Playback Resolver
  *
  * The single function the player calls to get a streamable audio URL.
- * Orchestrates Bricks 3 (YouTube matcher), 4 (stream extractor), and 5 (cache).
  *
  * Flow:
  *   1. Check AsyncStorage cache (6-hour TTL)         — instant if hit
  *   2. Match track → YouTube videoId                 — YouTube Data API v3
- *   3. Extract audio stream URL                      — Invidious (no key needed)
+ *   3. Extract audio stream URL                      — backend (/audio+proxy on web, /stream on native)
  *   4. Write result to cache
  *   5. Fall back to iTunes 30-second preview if anything fails
  *
@@ -35,8 +34,8 @@ export async function resolveTrackStream(track: Track): Promise<string | null> {
       return track.streamUrl ?? null;
     }
 
-    // ── Step 3: build stream URL (backend handles yt-dlp) ────────────────────
-    const streamUrl = extractStreamUrl(videoId);
+    // ── Step 3: build stream URL (async — web uses /audio+proxy, native /stream) ──
+    const streamUrl = await extractStreamUrl(videoId);
     if (!streamUrl) {
       console.warn('[resolver] 🟡 stream extraction failed — falling back to preview');
       return track.streamUrl ?? null;
